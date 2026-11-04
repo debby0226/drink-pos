@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>飲料貼紙機</title>
+<style>
+:root{--bg:#fffaf0;--fg:#222;--card:#fff;--line:#d8cfc0;--on:#d9480f;--onfg:#fff;--btn:#2b8a3e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1b19;--fg:#f4f0e8;--card:#2a2825;--line:#555;--on:#ff8c42;--onfg:#111;--btn:#2f9e44}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;padding:12px 12px 190px}
+h2{font-size:26px;margin:14px 0 4px}
+.hint{font-size:20px;opacity:.75;margin:0 0 8px}
+.grid{display:grid;gap:10px}
+.items{grid-template-columns:repeat(2,1fr)}
+.opts{grid-template-columns:repeat(3,1fr)}
+button.o{position:relative;font-size:28px;font-weight:700;padding:18px 6px;border:3px solid var(--line);border-radius:14px;background:var(--card);color:var(--fg);min-height:72px}
+button.o.on{background:var(--on);color:var(--onfg);border-color:var(--on)}
+.bd{position:absolute;top:-10px;right:-6px;min-width:36px;height:36px;line-height:36px;padding:0 8px;border-radius:18px;background:var(--btn);color:#fff;font-size:22px;font-weight:800}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:24px;font-weight:700;padding:10px 12px;margin-top:8px;border:2px solid var(--line);border-radius:12px;background:var(--card)}
+.row .t{flex:1}
+.row button{font-size:30px;font-weight:800;width:56px;height:56px;border:2px solid var(--line);border-radius:12px;background:transparent;color:var(--fg)}
+.row .q{min-width:36px;text-align:center;font-size:28px}
+#bar{position:fixed;left:0;right:0;bottom:0;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg);border-top:2px solid var(--line)}
+#st{font-size:22px;font-weight:700;text-align:center;min-height:30px}
+.print{width:100%;font-size:34px;font-weight:800;padding:20px;border:0;border-radius:16px;background:var(--btn);color:#fff}
+.print:disabled{opacity:.35}
+.small{width:100%;font-size:22px;padding:14px;margin-top:12px;border:2px solid var(--line);border-radius:12px;background:transparent;color:var(--fg)}
+#sticker{display:none}
+@media print{
+ @page{size:50mm 30mm;margin:0}
+ body>*:not(#sticker){display:none!important}
+ body{background:#fff;padding:0}
+ #sticker{display:block}
+ #sticker .stk{width:50mm;height:30mm;padding:2mm 3mm;color:#000;page-break-after:always;overflow:hidden}
+ .stk .n{font-size:10pt}.stk .i{font-size:20pt;font-weight:800;line-height:1.1}.stk .s{font-size:16pt;font-weight:700;margin-top:1mm}
+}
+</style>
+</head>
+<body>
+<h2>① 飲料</h2>
+<div class="grid items" id="items"></div>
+<h2 id="hs">② 甜度</h2>
+<div class="grid opts" id="sweet"></div>
+<h2 id="hc">③ 冰塊</h2>
+<div class="grid opts" id="ice"></div>
+<h2>已點</h2>
+<div id="list"></div>
+<button class="small" id="go">🖨 一般印表機</button>
+<button class="small" id="reset">全部清除</button>
+<div id="bar"><div id="st"></div><button class="print" id="go2" disabled>🖨 印貼紙</button></div>
+<div id="sticker"></div>
+<script>
+// 要改品項、預設甜度冰塊,直接改這裡就好
+var ITEMS=["紅茶","綠茶","烏龍茶","奶茶","檸檬紅茶","冬瓜茶","四季春","青茶"];
+var SWEET=["全糖","少糖","半糖","微糖","無糖"];
+var ICE=["正常冰","少冰","微冰","去冰","熱"];
+var sel={i:null,s:null,c:null},list=[],num=1;
+try{num=parseInt(localStorage.getItem("posnum"))||1}catch(e){}
+function $(id){return document.getElementById(id)}
+function build(id,arr,key){
+  var box=$(id);
+  arr.forEach(function(t){
+    var b=document.createElement("button");b.className="o";b.dataset.k=key;b.dataset.v=t;b.appendChild(document.createTextNode(t));
+    if(key==="i"){var s=document.createElement("span");s.className="bd";s.style.display="none";b.appendChild(s);}
+    b.onclick=function(){sel[key]=t;pick(key)};
+    box.appendChild(b);
+  });
+}
+function pick(key){
+  if(sel.i&&sel.s&&sel.c){
+    var o=sel,r=list.filter(function(x){return x.i===o.i&&x.s===o.s&&x.c===o.c})[0];
+    if(r)r.q++;else list.push({i:o.i,s:o.s,c:o.c,q:1});
+    say("✅ 已加:"+o.i+"・"+o.s+"・"+o.c);
+    sel={i:null,s:null,c:null};refresh();window.scrollTo(0,0);return;
+  }
+  say(!sel.i?"請先選飲料":!sel.s?sel.i+" → 請選甜度":!sel.c?sel.i+"・"+sel.s+" → 請選冰塊":"");
+  refresh();
+  if(key==="i"&&!sel.s)$("hs").scrollIntoView({behavior:"smooth"});
+  else if(key==="s"&&!sel.c)$("hc").scrollIntoView({behavior:"smooth"});
+}
+function total(){return list.reduce(function(a,o){return a+o.q},0)}
+function stickers(){var a=[],t=total(),k=0;list.forEach(function(o){for(var j=0;j<o.q;j++){k++;a.push({i:o.i,s:o.s,c:o.c,k:k,t:t})}});return a}
+function clock(){var d=new Date();return d.getHours()+":"+("0"+d.getMinutes()).slice(-2)}
+function done(){num++;try{localStorage.setItem("posnum",num)}catch(e){}list=[];sel={i:null,s:null,c:null}}
+function refresh(){
+  document.querySelectorAll("button.o").forEach(function(b){
+    if(b.dataset.k==="i"){
+      var n=list.filter(function(o){return o.i===b.dataset.v}).reduce(function(a,o){return a+o.q},0);
+      var s=b.querySelector(".bd");s.textContent=n;s.style.display=n?"block":"none";
+    }
+    b.classList.toggle("on",sel[b.dataset.k]===b.dataset.v);
+  });
+  var L=$("list");L.innerHTML="";
+  if(!list.length){var e=document.createElement("p");e.className="hint";e.textContent="還沒點飲料";L.appendChild(e)}
+  list.forEach(function(o,k){
+    var d=document.createElement("div");d.className="row";
+    var t=document.createElement("div");t.className="t";t.textContent=o.i+"・"+o.s+"・"+o.c;
+    var m=document.createElement("button");m.textContent="－";m.onclick=function(){o.q--;if(o.q<=0)list.splice(k,1);refresh()};
+    var q=document.createElement("span");q.className="q";q.textContent=o.q;
+    var p=document.createElement("button");p.textContent="＋";p.onclick=function(){o.q++;refresh()};
+    d.appendChild(t);d.appendChild(m);d.appendChild(q);d.appendChild(p);L.appendChild(d);
+  });
+  var n=total();
+  $("go2").textContent="🖨 印貼紙"+(n?"(共 "+n+" 張)":"");
+  $("go2").disabled=!n;$("go").disabled=!n;
+}
+build("sweet",SWEET,"s");build("ice",ICE,"c");build("items",ITEMS,"i");refresh();
+$("reset").onclick=function(){list=[];sel={i:null,s:null,c:null};$("st").textContent="";refresh()};
+
+// 一般印表機
+$("go").onclick=function(){
+  var box=$("sticker");box.innerHTML="";var tm=clock();
+  stickers().forEach(function(s){
+    var e=document.createElement("div");e.className="stk";
+    e.innerHTML='<div class="n"></div><div class="i"></div><div class="s"></div>';
+    e.children[0].textContent="No."+num+"  "+s.k+"/"+s.t+"  "+tm;
+    e.children[1].textContent=s.i;e.children[2].textContent=s.s+"／"+s.c;box.appendChild(e);
+  });
+  window.print();done();refresh();
+};
+
+// 藍牙直印(精臣 B21/B1 系列,203dpi,384x240)
+var SV="e7810a71-73ae-499d-8c15-faa9aef0c3f2",CH="bef8d6c9-9c21-4c9e-b632-bd58c1009f9f",ch=null,dev=null;
+function say(t){$("st").textContent=t}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function pkt(cmd,d){var n=d.length,c=cmd^n,b=[0x55,0x55,cmd,n];d.forEach(function(v){c^=v;b.push(v)});b.push(c,0xAA,0xAA);return new Uint8Array(b)}
+async function send(cmd,d,w){var p=pkt(cmd,d);for(var i=0;i<p.length;i+=100){var s=p.slice(i,i+100);if(ch.writeValueWithoutResponse)await ch.writeValueWithoutResponse(s);else await ch.writeValue(s)}await sleep(w||15)}
+async function conn(){
+  if(ch&&dev&&dev.gatt.connected)return;
+  say("① 選擇裝置中…");
+  dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"B21"},{namePrefix:"B1"}],optionalServices:[SV]});
+  say("② 連接機器中…");
+  var srv=await Promise.race([dev.gatt.connect(),new Promise(function(_,j){setTimeout(function(){j(new Error("連接逾時,請關掉精臣App、機器重開"))},15000)})]);
+  say("③ 找通道中…");
+  var sv=await srv.getPrimaryService(SV);ch=await sv.getCharacteristic(CH);
+  try{await ch.startNotifications()}catch(e){}
+}
+function draw(s){
+  var c=document.createElement("canvas");c.width=384;c.height=240;
+  var x=c.getContext("2d"),f="'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif";
+  x.fillStyle="#fff";x.fillRect(0,0,384,240);x.fillStyle="#000";
+  x.font="bold 26px "+f;x.fillText("No."+num+"  "+s.k+"/"+s.t+"  "+clock(),14,38);
+  x.font="bold 76px "+f;x.fillText(s.i,14,130);
+  x.font="bold 52px "+f;x.fillText(s.s+"／"+s.c,14,206);
+  return c;
+}
+async function printBle(c){
+  var im=c.getContext("2d").getImageData(0,0,384,240).data;
+  await send(0x21,[3],50);await send(0x23,[1],50);await send(0x01,[1],50);await send(0x03,[1],50);
+  await send(0x13,[0,240,1,128],50);await send(0x15,[0,1],50);
+  for(var y=0;y<240;y++){
+    var row=[y>>8,y&255,0,0,0,1];
+    for(var bx=0;bx<48;bx++){var v=0;for(var k=0;k<8;k++){v=(v<<1)|(im[(y*384+bx*8+k)*4]<128?1:0)}row.push(v)}
+    await send(0x85,row,4);
+  }
+  await sleep(500);await send(0xE3,[1],500);await send(0xF3,[1],300);
+}
+$("go2").onclick=async function(){
+  if(!navigator.bluetooth){say("❌ 請用 Android 的 Chrome 開啟");return}
+  var a=stickers();
+  try{
+    this.disabled=true;await conn();
+    for(var k=0;k<a.length;k++){say("印貼紙 "+(k+1)+" / "+a.length+" …");await printBle(draw(a[k]))}
+    done();say("✅ 完成,共 "+a.length+" 張");
+  }catch(e){say("❌ 沒印出來:"+e.message)}
+  refresh();
+};
+</script>
+</body>
+</html>
