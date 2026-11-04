@@ -126,14 +126,28 @@ function say(t){$("st").textContent=t}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
 function pkt(cmd,d){var n=d.length,c=cmd^n,b=[0x55,0x55,cmd,n];d.forEach(function(v){c^=v;b.push(v)});b.push(c,0xAA,0xAA);return new Uint8Array(b)}
 async function send(cmd,d,w){var p=pkt(cmd,d);for(var i=0;i<p.length;i+=100){var s=p.slice(i,i+100);if(ch.writeValueWithoutResponse)await ch.writeValueWithoutResponse(s);else await ch.writeValue(s)}await sleep(w||15)}
+var CANDS=[SV,"0000ff00-0000-1000-8000-00805f9b34fb","49535343-fe7d-4ae5-8fa9-9fafd205e455","000018f0-0000-1000-8000-00805f9b34fb","0000ae30-0000-1000-8000-00805f9b34fb","0000fff0-0000-1000-8000-00805f9b34fb","0000ffe0-0000-1000-8000-00805f9b34fb","6e400001-b5a3-f393-e0a9-e50e24dcca9e","0000fee7-0000-1000-8000-00805f9b34fb"];
 async function conn(){
   if(ch&&dev&&dev.gatt.connected)return;
   say("① 選擇裝置中…");
-  dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"B21"},{namePrefix:"B1"}],optionalServices:[SV]});
+  dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"B21"},{namePrefix:"B1"}],optionalServices:CANDS});
   say("② 連接機器中…");
   var srv=await Promise.race([dev.gatt.connect(),new Promise(function(_,j){setTimeout(function(){j(new Error("連接逾時,請關掉精臣App、機器重開"))},15000)})]);
   say("③ 找通道中…");
-  var sv=await srv.getPrimaryService(SV);ch=await sv.getCharacteristic(CH);
+  var svs=[];
+  for(var t=0;t<4&&!svs.length;t++){await sleep(800);try{svs=await srv.getPrimaryServices()}catch(e){}}
+  if(!svs.length)throw new Error("找不到任何服務");
+  var ids=[];ch=null;
+  for(var i=0;i<svs.length;i++){
+    ids.push(svs[i].uuid.slice(0,8));
+    var cs=[];try{cs=await svs[i].getCharacteristics()}catch(e){}
+    for(var j=0;j<cs.length;j++){
+      var p=cs[j].properties;
+      if((p.writeWithoutResponse||p.write)&&(!ch||cs[j].uuid===CH))ch=cs[j];
+    }
+  }
+  if(!ch)throw new Error("找不到可寫入通道,服務:"+ids.join(","));
+  say("通道 "+ch.uuid.slice(0,8)+" 已連上");
   try{await ch.startNotifications()}catch(e){}
 }
 function draw(s){
